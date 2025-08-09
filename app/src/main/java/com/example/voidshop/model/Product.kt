@@ -10,6 +10,9 @@ data class Product(
     val price: Double,
     @DrawableRes val imageRes: Int,
     val category: Category,
-    val keywords: List<String> = emptyList() //la palabra clave la bregamo con esta de abajo y cx
+    val keywords: List<String> = emptyList(),
+    val sizes: List<String> = emptyList()
 )
+
+
 
