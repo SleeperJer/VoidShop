@@ -203,7 +203,6 @@ fun ProductDetailScreen(
 @Composable
 private fun RatingRow(rating: Double, reviews: Int) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Stars(rating = rating)
         Text("${"%.1f".format(rating)}  |  ${reviews} reseñas", style = MaterialTheme.typography.bodyMedium)
     }
 }
