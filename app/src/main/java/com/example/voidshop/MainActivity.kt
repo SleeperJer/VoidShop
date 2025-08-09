@@ -9,10 +9,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            VoidShopTheme {
-                // Aquí llamaremos a nuestra pantalla principal
-                RootApp()
-            }
+            VoidShopTheme { RootApp() }
         }
     }
 }
