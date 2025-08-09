@@ -14,19 +14,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.voidshop.cart.CartViewModel
-import com.example.voidshop.cart.CartViewModel.CartLine
 import com.example.voidshop.model.Product
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CartScreen(
-    lines: List<CartLine>,
+    lines: List<CartViewModel.CartLine>,
     total: Double,
-    onAdd: (Product) -> Unit,
-    onRemoveOne: (Product) -> Unit,
-    onRemoveLine: (Product) -> Unit,
+    onAdd: (Product, String?) -> Unit,
+    onRemoveOne: (Product, String?) -> Unit,
+    onRemoveLine: (Product, String?) -> Unit,
     onClearAll: () -> Unit,
     onCheckout: () -> Unit,
     onBack: () -> Unit
@@ -74,7 +72,7 @@ fun CartScreen(
                     .padding(inner),
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
-                Text("Aun no hay nada en tu carrito")
+                Text("Tu carrito está vacío")
             }
         } else {
             LazyColumn(
@@ -96,12 +94,13 @@ fun CartScreen(
         }
     }
 }
+
 @Composable
 private fun CartLineItem(
-    line: CartLine,
-    onAdd: (Product) -> Unit,
-    onRemoveOne: (Product) -> Unit,
-    onRemoveLine: (Product) -> Unit
+    line: CartViewModel.CartLine,
+    onAdd: (Product, String?) -> Unit,
+    onRemoveOne: (Product, String?) -> Unit,
+    onRemoveLine: (Product, String?) -> Unit
 ) {
     Card {
         Row(Modifier.padding(12.dp)) {
@@ -113,24 +112,23 @@ private fun CartLineItem(
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(line.product.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(line.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(formatPrice(line.product.price), style = MaterialTheme.typography.bodyMedium)
                 Text(
                     "Cantidad: ${line.quantity}  ·  Subtotal: ${formatPrice(line.lineTotal)}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(onClick = { onAdd(line.product) }) { Text("+") }
-                OutlinedButton(onClick = { onRemoveOne(line.product) }) { Text("-") }
-                IconButton(onClick = { onRemoveLine(line.product) }) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onAdd(line.product, line.size) }) { Text("+") }
+                OutlinedButton(onClick = { onRemoveOne(line.product, line.size) }) { Text("-") }
+                IconButton(onClick = { onRemoveLine(line.product, line.size) }) {
                     Icon(Icons.Default.Delete, contentDescription = "Eliminar")
                 }
             }
         }
     }
 }
+
 private fun formatPrice(value: Double): String =
     "$" + String.format(Locale.US, "%,.2f", value)
