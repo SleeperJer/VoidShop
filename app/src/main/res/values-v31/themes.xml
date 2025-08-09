@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VoidShop.Launcher" parent="Theme.SplashScreen">
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/img</item>
+        <item name="postSplashScreenTheme">@style/Theme.VoidShop</item>
+    </style>
+</resources>
+    <!--tira una alerta pero no es nada maloo asi que no le pongan la mano que eto e lo que permite el fondo-->
