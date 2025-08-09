@@ -1,58 +1,18 @@
 package com.example.voidshop.cart
 
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.voidshop.data.local.AppDatabase
+import com.example.voidshop.data.local.entity.CartItemEntity
+import com.example.voidshop.data.repository.CartRepository
 import com.example.voidshop.model.Product
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
-class CartViewModel : ViewModel() {
+class CartViewModel(application: Application) : AndroidViewModel(application) {
 
-    // clave por producto + talla (si aplica)
-    data class Key(val productId: String, val size: String?)
-
-    private val quantities = mutableStateMapOf<Key, Int>()
-    private val products   = mutableStateMapOf<Key, Product>()
-
-    /** Agrega qty unidades del producto (por talla si aplica). */
-    fun add(p: Product, size: String? = null, qty: Int = 1) {
-        val k = Key(p.id, size)
-        products[k] = p
-        quantities[k] = (quantities[k] ?: 0) + qty
-    }
-
-    /** Resta 1; si llega a 0 elimina la línea. */
-    fun removeOne(p: Product, size: String? = null) {
-        val k = Key(p.id, size)
-        val q = (quantities[k] ?: 0) - 1
-        if (q <= 0) {
-            quantities.remove(k)
-            products.remove(k)
-        } else {
-            quantities[k] = q
-        }
-    }
-
-    /** Elimina la línea completa (producto + talla). */
-    fun removeLine(p: Product, size: String? = null) {
-        val k = Key(p.id, size)
-        quantities.remove(k)
-        products.remove(k)
-    }
-
-    /** Vacía todo el carrito. */
-    fun clear() {
-        quantities.clear()
-        products.clear()
-    }
-
-    /** Ítems totales (sumatoria de cantidades). */
-    fun count(): Int = quantities.values.sum()
-
-    /** Total $ del carrito. */
-    fun total(): Double = quantities.entries.sumOf { (k, q) ->
-        (products[k]?.price ?: 0.0) * q
-    }
-
-    /** Línea para UI. */
+    // Línea para UI (igual que antes)
     data class CartLine(
         val product: Product,
         val size: String?,
@@ -62,9 +22,65 @@ class CartViewModel : ViewModel() {
         val label: String get() = if (size.isNullOrBlank()) product.name else "${product.name} · Talla $size"
     }
 
-    /** Lista observable (se recalcula a partir del estado). */
-    fun items(): List<CartLine> =
-        quantities.mapNotNull { (k, q) ->
-            products[k]?.let { CartLine(it, k.size, q) }
-        }
+    private val repo: CartRepository by lazy {
+        val dao = AppDatabase.get(getApplication()).cartDao()
+        CartRepository(dao)
+    }
+
+    // Mapeo de Entity -> CartLine (recuperamos Product “ligero” para UI)
+    private fun entityToProduct(e: CartItemEntity): Product =
+        Product(
+            id = e.productId,
+            name = e.name,
+            price = e.price,
+            imageRes = e.imageRes,
+            category = com.example.voidshop.model.Category.ROPA, // NO usado para carrito
+            keywords = emptyList(),
+            sizes = emptyList()
+        )
+
+    private val _lines: StateFlow<List<CartLine>> =
+        repo.observe()
+            .map { list ->
+                list.map { e ->
+                    CartLine(
+                        product = entityToProduct(e),
+                        size = e.size,
+                        quantity = e.quantity
+                    )
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val lines: StateFlow<List<CartLine>> = _lines
+
+    val count: StateFlow<Int> =
+        _lines.map { it.sumOf { l -> l.quantity } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    val total: StateFlow<Double> =
+        _lines.map { it.sumOf { l -> l.lineTotal } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0.0)
+
+    /** API pública igual que antes (pero persistente) */
+    fun add(p: Product, size: String? = null, qty: Int = 1) {
+        viewModelScope.launch { repo.add(p, size, qty) }
+    }
+
+    fun removeOne(p: Product, size: String? = null) {
+        viewModelScope.launch { repo.removeOne(p, size) }
+    }
+
+    fun removeLine(p: Product, size: String? = null) {
+        viewModelScope.launch { repo.removeLine(p, size) }
+    }
+
+    fun clear() {
+        viewModelScope.launch { repo.clear() }
+    }
+
+    // Métodos “compat” si los usabas así:
+    fun items(): List<CartLine> = lines.value
+    fun count(): Int = count.value
+    fun total(): Double = total.value
 }

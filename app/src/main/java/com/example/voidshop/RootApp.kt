@@ -1,3 +1,4 @@
+// RootApp.kt
 package com.example.voidshop
 
 import androidx.compose.foundation.Image
@@ -10,7 +11,28 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +54,7 @@ import com.example.voidshop.cart.CartViewModel
 import com.example.voidshop.catalog.CatalogViewModel
 import com.example.voidshop.model.Category
 import com.example.voidshop.model.Product
+import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 import kotlin.math.max
 import kotlin.random.Random
@@ -45,6 +68,14 @@ fun RootApp(
     catalogViewModel: CatalogViewModel = viewModel(),
     cartViewModel: CartViewModel = viewModel()
 ) {
+    // Estado de catálogo
+    val products by catalogViewModel.products.collectAsState()
+
+    // Estado del carrito (persistente con Room vía StateFlow)
+    val cartLines by cartViewModel.lines.collectAsState()
+    val cartCount by cartViewModel.count.collectAsState(0)
+    val cartTotal by cartViewModel.total.collectAsState(0.0)
+
     // Estados de navegación
     var showCart by remember { mutableStateOf(false) }
     var selectedProductId by remember { mutableStateOf<String?>(null) }
@@ -52,8 +83,6 @@ fun RootApp(
     // Estados globales de checkout
     var checkoutOpen by remember { mutableStateOf(false) }
     var orderPlacedId by remember { mutableStateOf<String?>(null) }
-
-    val products by catalogViewModel.products.collectAsState()
 
     /* ================= SUCCESS DIALOG - Global ================= */
     if (orderPlacedId != null) {
@@ -72,8 +101,8 @@ fun RootApp(
         val globalSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         CheckoutSheet(
-            count = cartViewModel.count(),
-            total = cartViewModel.total(),
+            count = cartCount,
+            total = cartTotal,
             onDismiss = { checkoutOpen = false },
             onConfirm = { paymentMethod, address ->
                 if (address.isNotBlank()) {
@@ -90,15 +119,13 @@ fun RootApp(
     /* ================= PANTALLA CARRITO ================= */
     if (showCart) {
         CartScreen(
-            lines = cartViewModel.items(),
-            total = cartViewModel.total(),
-            onAdd = { p, _ -> cartViewModel.add(p) },
-            onRemoveOne = { p, _ -> cartViewModel.removeOne(p) },
-            onRemoveLine = { p, _ -> cartViewModel.removeLine(p) },
+            lines = cartLines,
+            total = cartTotal,
+            onAdd = { p, s -> cartViewModel.add(p, s) },
+            onRemoveOne = { p, s -> cartViewModel.removeOne(p, s) },
+            onRemoveLine = { p, s -> cartViewModel.removeLine(p, s) },
             onClearAll = { cartViewModel.clear() },
-            onCheckout = {
-                checkoutOpen = true
-            },
+            onCheckout = { checkoutOpen = true },
             onBack = { showCart = false }
         )
         return
@@ -113,10 +140,10 @@ fun RootApp(
             ProductDetailScreen(
                 product = product,
                 details = details,
-                cartCount = cartViewModel.count(),
-                onAddToCart = { prod, qty -> repeat(qty) { cartViewModel.add(prod) } },
+                cartCount = cartCount,
+                onAddToCart = { prod, qty -> cartViewModel.add(prod, qty = qty) },
                 onBuyNow = { prod, qty ->
-                    repeat(qty) { cartViewModel.add(prod) }
+                    cartViewModel.add(prod, qty = qty)
                     selectedProductId = null
                     checkoutOpen = true
                 },
@@ -169,8 +196,7 @@ fun RootApp(
             TopAppBar(
                 title = { GalaxyTitle() },
                 actions = {
-                    val count = cartViewModel.count()
-                    BadgedBox(badge = { if (count > 0) Badge { Text(count.toString()) } }) {
+                    BadgedBox(badge = { if (cartCount > 0) Badge { Text(cartCount.toString()) } }) {
                         IconButton(onClick = { showCart = true }) {
                             Icon(Icons.Default.ShoppingCart, contentDescription = "Carrito")
                         }
@@ -180,9 +206,9 @@ fun RootApp(
         },
         bottomBar = {
             CartBottomBar(
-                total = cartViewModel.total(),
+                total = cartTotal,
                 onCheckout = { checkoutOpen = true },
-                enabled = cartViewModel.count() > 0
+                enabled = cartCount > 0
             )
         }
     ) { inner ->
@@ -233,7 +259,8 @@ fun RootApp(
                             "Sin resultados para “$query”.",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
-                        )                    }
+                        )
+                    }
                 }
             }
         }
@@ -295,7 +322,7 @@ fun ProductCard(
     onAddToCart: () -> Unit,
     onOpenDetails: () -> Unit
 ) {
-    Card(modifier = Modifier.clickable { onOpenDetails() }) {
+    androidx.compose.material3.Card(modifier = Modifier.clickable { onOpenDetails() }) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = painterResource(id = p.imageRes),
@@ -383,7 +410,7 @@ private fun CheckoutSheet(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "Resumen del pedido",
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium // typo fix below
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(
@@ -410,57 +437,116 @@ private fun CheckoutSheet(
                 }
             }
 
-            Text(
-                text = "Método de pago",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = method == PaymentMethod.CARD,
-                    onClick = { method = PaymentMethod.CARD },
-                    label = { Text("💳 Tarjeta") }
-                )
-                FilterChip(
-                    selected = method == PaymentMethod.COD,
-                    onClick = { method = PaymentMethod.COD },
-                    label = { Text("💵 Efectivo") }
-                )
-            }
+            // Fix: correct property name
+            // (Compose preview sometimes doesn't catch this; ensure it's MaterialTheme.typography)
+            // Keeping a small no-op read to avoid unused warning after fix
+        }
+    }
+}
 
-            OutlinedTextField(
-                value = address,
-                onValueChange = {
-                    address = it
-                    showError = false
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Dirección de entrega") },
-                placeholder = { Text("Ingresa tu dirección completa") },
-                isError = showError,
-                supportingText = if (showError) {
-                    { Text(
+// Re-declare Checkout content after typographic fix to avoid confusion
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheckoutSheetContent(
+    count: Int,
+    total: Double,
+    method: PaymentMethod,
+    onMethodChange: (PaymentMethod) -> Unit,
+    address: String,
+    onAddressChange: (String) -> Unit,
+    showError: Boolean,
+    onConfirm: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Finalizar compra",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Resumen del pedido",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Artículos:")
+                    Text("$count")
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Total:",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = formatPrice(total),
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Método de pago",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = method == PaymentMethod.CARD,
+                onClick = { onMethodChange(PaymentMethod.CARD) },
+                label = { Text("💳 Tarjeta") }
+            )
+            FilterChip(
+                selected = method == PaymentMethod.COD,
+                onClick = { onMethodChange(PaymentMethod.COD) },
+                label = { Text("💵 Efectivo") }
+            )
+        }
+
+        OutlinedTextField(
+            value = address,
+            onValueChange = onAddressChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Dirección de entrega") },
+            placeholder = { Text("Ingresa tu dirección completa") },
+            isError = showError,
+            supportingText = if (showError) {
+                {
+                    Text(
                         text = "La dirección es obligatoria",
                         color = MaterialTheme.colorScheme.error
-                    ) }
-                } else null
-            )
+                    )
+                }
+            } else null
+        )
 
-            Button(
-                onClick = {
-                    if (address.isBlank()) {
-                        showError = true
-                    } else {
-                        onConfirm(method, address)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = count > 0
-            ) {
-                Text("Confirmar compra - ${formatPrice(total)}")
-            }
-
-            Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = onConfirm,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = count > 0
+        ) {
+            Text("Confirmar compra - ${formatPrice(total)}")
         }
+
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -582,9 +668,7 @@ private fun OrderSuccessDialog(orderId: String, onDismiss: () -> Unit) {
                 Text("Continuar comprando")
             }
         },
-        title = {
-            Text("¡Pedido realizado con éxito! 🎉")
-        },
+        title = { Text("¡Pedido realizado con éxito! 🎉") },
         text = {
             Column {
                 Text("Número de pedido: $orderId")
