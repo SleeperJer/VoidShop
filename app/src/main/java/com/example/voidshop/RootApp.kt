@@ -34,8 +34,10 @@ import com.example.voidshop.model.Category
 import com.example.voidshop.model.Product
 import java.util.Locale
 import kotlin.math.max
+import kotlin.random.Random
 
 enum class SortOption { NONE, PRICE_ASC, PRICE_DESC, NAME }
+enum class PaymentMethod { CARD, COD }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,13 +45,49 @@ fun RootApp(
     catalogViewModel: CatalogViewModel = viewModel(),
     cartViewModel: CartViewModel = viewModel()
 ) {
-    // Navegación simple
+    // Estados de navegación
     var showCart by remember { mutableStateOf(false) }
     var selectedProductId by remember { mutableStateOf<String?>(null) }
 
+    // Estados globales de checkout
+    var checkoutOpen by remember { mutableStateOf(false) }
+    var orderPlacedId by remember { mutableStateOf<String?>(null) }
+
     val products by catalogViewModel.products.collectAsState()
 
-    // Pantalla de carrito
+    /* ================= SUCCESS DIALOG - Global ================= */
+    if (orderPlacedId != null) {
+        OrderSuccessDialog(
+            orderId = orderPlacedId!!,
+            onDismiss = {
+                orderPlacedId = null
+                showCart = false
+                selectedProductId = null
+            }
+        )
+    }
+
+    /* ================= CHECKOUT SHEET - Global ================= */
+    if (checkoutOpen) {
+        val globalSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+        CheckoutSheet(
+            count = cartViewModel.count(),
+            total = cartViewModel.total(),
+            onDismiss = { checkoutOpen = false },
+            onConfirm = { paymentMethod, address ->
+                if (address.isNotBlank()) {
+                    val orderId = "VS-" + Random.nextInt(100_000, 999_999)
+                    cartViewModel.clear()
+                    checkoutOpen = false
+                    orderPlacedId = orderId
+                }
+            },
+            sheetState = globalSheetState
+        )
+    }
+
+    /* ================= PANTALLA CARRITO ================= */
     if (showCart) {
         CartScreen(
             lines = cartViewModel.items(),
@@ -58,26 +96,29 @@ fun RootApp(
             onRemoveOne = { p, _ -> cartViewModel.removeOne(p) },
             onRemoveLine = { p, _ -> cartViewModel.removeLine(p) },
             onClearAll = { cartViewModel.clear() },
-            onCheckout = { /* TODO */ },
+            onCheckout = {
+                checkoutOpen = true
+            },
             onBack = { showCart = false }
         )
         return
     }
 
-    // Detalle
+    /* ================= PANTALLA DETALLE PRODUCTO ================= */
     selectedProductId?.let { pid ->
-        val p = products.firstOrNull { it.id == pid }
-        if (p != null) {
-            val det = ProductDetailsRepo.get(p)
+        val product = products.firstOrNull { it.id == pid }
+        if (product != null) {
+            val details = ProductDetailsRepo.get(product)
+
             ProductDetailScreen(
-                product = p,
-                details = det,
+                product = product,
+                details = details,
                 cartCount = cartViewModel.count(),
                 onAddToCart = { prod, qty -> repeat(qty) { cartViewModel.add(prod) } },
                 onBuyNow = { prod, qty ->
                     repeat(qty) { cartViewModel.add(prod) }
                     selectedProductId = null
-                    showCart = true
+                    checkoutOpen = true
                 },
                 onBack = { selectedProductId = null },
                 onOpenCart = { showCart = true }
@@ -88,28 +129,21 @@ fun RootApp(
         }
     }
 
-    /* ================= Filtros ================= */
+    /* ================= PANTALLA HOME ================= */
     var query by remember { mutableStateOf("") }
-
-    // calcular bounds de precio del catálogo
     val minPriceRaw = remember(products) { products.minOfOrNull { it.price }?.toFloat() ?: 0f }
     val maxPriceRaw = remember(products) { products.maxOfOrNull { it.price }?.toFloat() ?: 0f }
     val hasPriceRange = maxPriceRaw > minPriceRaw
     val priceBounds = if (hasPriceRange) (minPriceRaw..maxPriceRaw) else (0f..1f)
-
     var selectedCategories by remember { mutableStateOf(setOf<Category>()) }
     var priceRange by remember(minPriceRaw, maxPriceRaw) { mutableStateOf(priceBounds) }
     var sortOption by remember { mutableStateOf(SortOption.NONE) }
-
     var filtersOpen by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // aplicar filtros/orden
     val filtered by remember(products, query, selectedCategories, priceRange, sortOption) {
         derivedStateOf {
             val q = query.trim()
             var seq = products.asSequence()
-
             if (q.isNotEmpty()) {
                 seq = seq.filter { p ->
                     p.name.contains(q, ignoreCase = true) ||
@@ -121,7 +155,6 @@ fun RootApp(
             }
             val pr = (priceRange.start..priceRange.endInclusive).coerceIn(priceBounds)
             seq = seq.filter { it.price.toFloat() in pr.start..pr.endInclusive }
-
             when (sortOption) {
                 SortOption.NONE -> seq.toList()
                 SortOption.PRICE_ASC -> seq.sortedBy { it.price }.toList()
@@ -131,7 +164,6 @@ fun RootApp(
         }
     }
 
-    /* ================= UI principal ================= */
     Scaffold(
         topBar = {
             TopAppBar(
@@ -149,7 +181,7 @@ fun RootApp(
         bottomBar = {
             CartBottomBar(
                 total = cartViewModel.total(),
-                onCheckout = { showCart = true },
+                onCheckout = { checkoutOpen = true },
                 enabled = cartViewModel.count() > 0
             )
         }
@@ -175,7 +207,6 @@ fun RootApp(
                                 Icon(Icons.Default.Close, contentDescription = "Limpiar")
                             }
                         }
-                        // ABRE los filtros
                         IconButton(onClick = { filtersOpen = true }) {
                             Icon(Icons.Default.Menu, contentDescription = "Filtros")
                         }
@@ -189,11 +220,11 @@ fun RootApp(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(filtered) { p: Product ->
+                items(filtered) { product ->
                     ProductCard(
-                        p = p,
-                        onAddToCart = { cartViewModel.add(p) },
-                        onOpenDetails = { selectedProductId = p.id }
+                        p = product,
+                        onAddToCart = { cartViewModel.add(product) },
+                        onOpenDetails = { selectedProductId = product.id }
                     )
                 }
                 if (filtered.isEmpty()) {
@@ -202,28 +233,27 @@ fun RootApp(
                             "Sin resultados para “$query”.",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
-                        )
-                    }
+                        )                    }
                 }
             }
         }
     }
 
-    // Sheet de filtros
+    /* ================= SHEET DE FILTROS ================= */
     if (filtersOpen) {
+        val filtersSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { filtersOpen = false },
-            sheetState = sheetState
+            sheetState = filtersSheetState
         ) {
             FilterSheet(
                 hasPriceRange = hasPriceRange,
                 bounds = priceBounds,
                 selectedCategories = selectedCategories,
                 onToggleCategory = { cat ->
-                    selectedCategories =
-                        selectedCategories.toMutableSet().apply {
-                            if (contains(cat)) remove(cat) else add(cat)
-                        }
+                    selectedCategories = selectedCategories.toMutableSet().apply {
+                        if (contains(cat)) remove(cat) else add(cat)
+                    }
                 },
                 priceRange = priceRange,
                 onPriceRangeChange = { priceRange = it.coerceIn(priceBounds) },
@@ -240,7 +270,7 @@ fun RootApp(
     }
 }
 
-/* ======= Auxiliares UI ======= */
+/* ================== UI COMPONENTS ================== */
 
 @Composable
 private fun GalaxyTitle() {
@@ -252,10 +282,7 @@ private fun GalaxyTitle() {
             fontWeight = FontWeight.Bold,
             brush = Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFF6A00FF),
-                    Color(0xFFE91E63),
-                    Color(0xFF00BCD4),
-                    Color(0xFFFFEB3B)
+                    Color(0xFF6A00FF), Color(0xFFE91E63), Color(0xFF00BCD4), Color(0xFFFFEB3B)
                 )
             )
         )
@@ -268,9 +295,7 @@ fun ProductCard(
     onAddToCart: () -> Unit,
     onOpenDetails: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.clickable { onOpenDetails() }
-    ) {
+    Card(modifier = Modifier.clickable { onOpenDetails() }) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = painterResource(id = p.imageRes),
@@ -280,10 +305,19 @@ fun ProductCard(
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(p.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(formatPrice(p.price), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = p.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = formatPrice(p.price),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
-            Button(onClick = onAddToCart) { Text("Agregar") }
+            Button(onClick = onAddToCart) {
+                Text("Agregar")
+            }
         }
     }
 }
@@ -295,15 +329,142 @@ fun CartBottomBar(total: Double, onCheckout: () -> Unit, enabled: Boolean) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Total: ${formatPrice(total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Button(onClick = onCheckout, enabled = enabled) { Text("Comprar") }
+            Text(
+                text = "Total: ${formatPrice(total)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Button(
+                onClick = onCheckout,
+                enabled = enabled
+            ) {
+                Text("Comprar")
+            }
         }
     }
 }
 
-/* ======= Hoja de filtros ======= */
+/* ================== CHECKOUT SHEET ================== */
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheckoutSheet(
+    count: Int,
+    total: Double,
+    onDismiss: () -> Unit,
+    onConfirm: (PaymentMethod, String) -> Unit,
+    sheetState: SheetState
+) {
+    var method by remember { mutableStateOf(PaymentMethod.CARD) }
+    var address by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Finalizar compra",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Resumen del pedido",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Artículos:")
+                        Text("$count")
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Total:",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = formatPrice(total),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = "Método de pago",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = method == PaymentMethod.CARD,
+                    onClick = { method = PaymentMethod.CARD },
+                    label = { Text("💳 Tarjeta") }
+                )
+                FilterChip(
+                    selected = method == PaymentMethod.COD,
+                    onClick = { method = PaymentMethod.COD },
+                    label = { Text("💵 Efectivo") }
+                )
+            }
+
+            OutlinedTextField(
+                value = address,
+                onValueChange = {
+                    address = it
+                    showError = false
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Dirección de entrega") },
+                placeholder = { Text("Ingresa tu dirección completa") },
+                isError = showError,
+                supportingText = if (showError) {
+                    { Text(
+                        text = "La dirección es obligatoria",
+                        color = MaterialTheme.colorScheme.error
+                    ) }
+                } else null
+            )
+
+            Button(
+                onClick = {
+                    if (address.isBlank()) {
+                        showError = true
+                    } else {
+                        onConfirm(method, address)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = count > 0
+            ) {
+                Text("Confirmar compra - ${formatPrice(total)}")
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+/* ================== FILTER SHEET ================== */
 
 @Composable
 private fun FilterSheet(
@@ -324,9 +485,16 @@ private fun FilterSheet(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Filtros", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            text = "Filtros",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
 
-        Text("Categorías", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = "Categorías",
+            style = MaterialTheme.typography.titleMedium
+        )
         WrapFlow(
             modifier = Modifier.fillMaxWidth(),
             horizontalSpacing = 8.dp,
@@ -336,12 +504,17 @@ private fun FilterSheet(
                 FilterChip(
                     selected = selectedCategories.contains(cat),
                     onClick = { onToggleCategory(cat) },
-                    label = { Text(cat.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                    label = {
+                        Text(cat.name.lowercase().replaceFirstChar { it.uppercase() })
+                    }
                 )
             }
         }
 
-        Text("Precio", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = "Precio",
+            style = MaterialTheme.typography.titleMedium
+        )
         if (hasPriceRange) {
             Text(
                 "Rango: ${formatPrice(priceRange.start.toDouble())} - " +
@@ -357,7 +530,10 @@ private fun FilterSheet(
             Text("No hay rango de precios disponible para filtrar.")
         }
 
-        Text("Ordenar por", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = "Ordenar por",
+            style = MaterialTheme.typography.titleMedium
+        )
         WrapFlow(
             modifier = Modifier.fillMaxWidth(),
             horizontalSpacing = 8.dp,
@@ -378,15 +554,49 @@ private fun FilterSheet(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(onClick = onReset, modifier = Modifier.weight(1f)) { Text("Restablecer") }
-            Button(onClick = onApply, modifier = Modifier.weight(1f)) { Text("Aplicar") }
+            OutlinedButton(
+                onClick = onReset,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Restablecer")
+            }
+            Button(
+                onClick = onApply,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Aplicar")
+            }
         }
-
         Spacer(Modifier.height(12.dp))
     }
 }
 
-/* ======= Helpers ======= */
+/* ================== SUCCESS DIALOG ================== */
+
+@Composable
+private fun OrderSuccessDialog(orderId: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Continuar comprando")
+            }
+        },
+        title = {
+            Text("¡Pedido realizado con éxito! 🎉")
+        },
+        text = {
+            Column {
+                Text("Número de pedido: $orderId")
+                Spacer(Modifier.height(8.dp))
+                Text("Recibirás un email de confirmación pronto.")
+                Text("¡Gracias por tu compra!")
+            }
+        }
+    )
+}
+
+/* ================== LAYOUT HELPERS ================== */
 
 @Composable
 private fun WrapFlow(
@@ -398,7 +608,6 @@ private fun WrapFlow(
     Layout(modifier = modifier, content = content) { measurables, constraints ->
         val hSpace = horizontalSpacing.roundToPx()
         val vSpace = verticalSpacing.roundToPx()
-
         val rows = mutableListOf<List<Placeable>>()
         val rowHeights = mutableListOf<Int>()
         var currentRow = mutableListOf<Placeable>()
@@ -413,9 +622,7 @@ private fun WrapFlow(
                 rowHeights.add(currentHeight)
                 maxWidthUsed = max(maxWidthUsed, currentWidth)
                 totalHeight += if (rows.size == 1) currentHeight else vSpace + currentHeight
-                currentRow = mutableListOf()
-                currentWidth = 0
-                currentHeight = 0
+                currentRow = mutableListOf(); currentWidth = 0; currentHeight = 0
             }
         }
 
@@ -423,7 +630,6 @@ private fun WrapFlow(
             val placeable = measurable.measure(constraints.copy(minWidth = 0))
             val itemWidth = placeable.width
             val tentativeWidth = if (currentRow.isEmpty()) itemWidth else currentWidth + hSpace + itemWidth
-
             if (tentativeWidth <= constraints.maxWidth || currentRow.isEmpty()) {
                 currentRow.add(placeable)
                 currentWidth = tentativeWidth
@@ -453,6 +659,8 @@ private fun WrapFlow(
         }
     }
 }
+
+/* ================== UTILITY FUNCTIONS ================== */
 
 private fun sortLabel(opt: SortOption) = when (opt) {
     SortOption.NONE -> "Relevancia"
