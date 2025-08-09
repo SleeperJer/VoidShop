@@ -96,7 +96,6 @@ fun CartScreen(
         }
     }
 }
-
 @Composable
 private fun CartLineItem(
     line: CartLine,
