@@ -65,14 +65,14 @@ object ProductDetailsRepo {
 fun ProductDetailScreen(
     product: Product,
     details: ProductDetails,
-    cartCount: Int,                                  // badge del carrito
+    cartCount: Int,
     onAddToCart: (Product, Int) -> Unit,
     onBuyNow: (Product, Int) -> Unit,
     onBack: () -> Unit,
     onOpenCart: () -> Unit
 ) {
-    var selected by remember { mutableStateOf(0) }   // índice de imagen
-    var qty by remember { mutableStateOf(1) }        // cantidad
+    var selected by remember { mutableStateOf(0) }
+    var qty by remember { mutableStateOf(1) }
 
     Scaffold(
         topBar = {
@@ -99,7 +99,6 @@ fun ProductDetailScreen(
                 .padding(inner)
                 .padding(horizontal = 12.dp)
         ) {
-            // Imagen principal
             val main = details.images.getOrNull(selected) ?: product.imageRes
             Box(
                 modifier = Modifier
@@ -119,7 +118,6 @@ fun ProductDetailScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // Miniaturas
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(details.images) { index, res ->
                     val selectedBorder = if (index == selected)
@@ -141,19 +139,16 @@ fun ProductDetailScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Título + precio
             Text(product.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
             Text(formatPrice(product.price), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
 
             Spacer(Modifier.height(6.dp))
 
-            // Rating + # reseñas
             RatingRow(rating = details.rating, reviews = details.reviews)
 
             Spacer(Modifier.height(12.dp))
 
-            // Bullets
             if (details.highlights.isNotEmpty()) {
                 Text("Acerca de este artículo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(6.dp))
@@ -168,12 +163,10 @@ fun ProductDetailScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // Cantidad
             QuantitySelector(qty = qty, onChange = { qty = it })
 
             Spacer(Modifier.height(12.dp))
 
-            // Acciones
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)

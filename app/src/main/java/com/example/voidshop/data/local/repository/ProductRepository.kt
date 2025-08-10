@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/voidshop/data/repository/ProductRepository.kt
 package com.example.voidshop.data.repository
 
 import com.example.voidshop.R
@@ -12,11 +11,9 @@ import java.util.UUID
 
 class ProductRepository(private val dao: ProductDao) {
 
-    /** Flujo de productos de usuario convertidos a modelo de UI. */
     fun observeUserProducts(): Flow<List<Product>> =
         dao.observeAll().map { list -> list.map { it.toModel() } }
 
-    /** Inserta un producto de usuario. Devuelve el productId generado. */
     suspend fun addUserProduct(
         name: String,
         price: Double,

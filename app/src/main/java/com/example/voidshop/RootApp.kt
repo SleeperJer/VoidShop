@@ -285,7 +285,6 @@ fun RootApp(
         }
     }
 
-    // Sheet agregar producto
     if (addOpen) {
         val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         AddProductSheet(

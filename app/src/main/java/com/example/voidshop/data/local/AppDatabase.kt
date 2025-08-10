@@ -35,8 +35,6 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "voidshop.db"
                 )
-                // En desarrollo, si cambias el schema, destruye y recrea (evita crash por migraciones)
-                // Quita esta línea cuando agregues migraciones reales.
                 builder.fallbackToDestructiveMigration()
 
                 if (isDebug) {
