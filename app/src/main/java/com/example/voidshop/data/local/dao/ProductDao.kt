@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/voidshop/data/local/dao/ProductDao.kt
 package com.example.voidshop.data.local.dao
 
 import androidx.room.Dao

@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/voidshop/RootApp.kt
 package com.example.voidshop
 
 import androidx.compose.foundation.Image
@@ -54,7 +53,6 @@ fun RootApp(
 ) {
     val products by catalogViewModel.products.collectAsState()
 
-    // Carrito persistente
     val cartLines by cartViewModel.lines.collectAsState()
     val cartCount by cartViewModel.count.collectAsState(0)
     val cartTotal by cartViewModel.total.collectAsState(0.0)
@@ -78,7 +76,6 @@ fun RootApp(
         )
     }
 
-    // Checkout sheet (forzar expandido)
     if (checkoutOpen) {
         val globalSheetState = rememberModalBottomSheetState(
             skipPartiallyExpanded = true,
@@ -102,7 +99,6 @@ fun RootApp(
         )
     }
 
-    // Carrito
     if (showCart) {
         CartScreen(
             lines = cartLines,
@@ -117,7 +113,6 @@ fun RootApp(
         return
     }
 
-    // Detalle
     selectedProductId?.let { pid ->
         val product = products.firstOrNull { it.id == pid }
         if (product != null) {
@@ -139,7 +134,6 @@ fun RootApp(
         } else selectedProductId = null
     }
 
-    // Home
     var query by remember { mutableStateOf("") } // solo nombre
     val minPriceRaw = remember(products) { products.minOfOrNull { it.price }?.toFloat() ?: 0f }
     val maxPriceRaw = remember(products) { products.maxOfOrNull { it.price }?.toFloat() ?: 0f }
@@ -222,7 +216,6 @@ fun RootApp(
                 }
             )
 
-            // Botón "+" debajo del buscador, derecha
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -263,7 +256,6 @@ fun RootApp(
         }
     }
 
-    // Sheet filtros (incluye keywords)
     if (filtersOpen) {
         val filtersSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { filtersOpen = false }, sheetState = filtersSheetState) {
@@ -306,8 +298,6 @@ fun RootApp(
         )
     }
 }
-
-/* ================== Add Product Sheet ================== */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -394,7 +384,6 @@ private fun AddProductSheet(
     }
 }
 
-/* ================== Filter Sheet ================== */
 
 @Composable
 private fun FilterSheet(
@@ -478,7 +467,6 @@ private fun FilterSheet(
     }
 }
 
-/* ================== UI Aux ================== */
 
 @Composable
 private fun GalaxyTitle() {
@@ -510,7 +498,6 @@ fun ProductCard(
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
 
-            // ✅ Fallback seguro para imageRes=0 (evita crash)
             val safeRes = p.imageRes.takeIf { it != 0 } ?: R.drawable.ic_launcher_foreground
 
             Image(
@@ -624,7 +611,6 @@ private fun OrderSuccessDialog(orderId: String, onDismiss: () -> Unit) {
     )
 }
 
-/* ================== Layout Helper ================== */
 
 @Composable
 private fun WrapFlow(
@@ -688,7 +674,6 @@ private fun WrapFlow(
     }
 }
 
-/* ================== Utils ================== */
 
 private fun sortLabel(opt: SortOption) = when (opt) {
     SortOption.NONE -> "Relevancia"

@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/voidshop/catalog/CatalogViewModel.kt
 package com.example.voidshop.catalog
 
 import android.app.Application
@@ -18,7 +17,6 @@ import kotlinx.coroutines.launch
 
 class CatalogViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Productos "seed" que ya tenías
     private val builtIn = MutableStateFlow(
         listOf(
             Product("1",  "Auriculares Xbox",          10.99, R.drawable.auriculares_xbox,          Category.GAMES,
@@ -52,22 +50,18 @@ class CatalogViewModel(application: Application) : AndroidViewModel(application)
         )
     )
 
-    // Repo Room
     private val repo: ProductRepository by lazy {
         val dao = AppDatabase.get(getApplication()).productDao()
         ProductRepository(dao)
     }
 
-    // Flow de productos de usuario desde BD
     private val userProducts = repo.observeUserProducts()
 
-    // Catálogo combinado (built-in + BD)
     val products: StateFlow<List<Product>> =
         combine(builtIn, userProducts) { base, user ->
-            user + base  // Los agregados por usuario primero
+            user + base
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // API para agregar producto del usuario
     fun addUserProduct(
         name: String,
         price: Double,
