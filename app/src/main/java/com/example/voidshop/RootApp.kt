@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -28,6 +29,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -337,7 +340,8 @@ private fun AddProductSheet(
                 label = { Text("Precio") },
                 placeholder = { Text("Ej: 12.99") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
 
             Text("Categoría", style = MaterialTheme.typography.titleSmall)
@@ -529,6 +533,45 @@ private fun CheckoutSheet(
     var address by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
 
+    // Campos de tarjeta (visibles solo si method == CARD)
+    var cardNumber by remember { mutableStateOf("") }
+    var cardHolder by remember { mutableStateOf("") }
+    var expiry by remember { mutableStateOf("") }
+    var cvv by remember { mutableStateOf("") }
+
+    var cardNumberError by remember { mutableStateOf(false) }
+    var cardHolderError by remember { mutableStateOf(false) }
+    var expiryError by remember { mutableStateOf(false) }
+    var cvvError by remember { mutableStateOf(false) }
+
+    fun formatCardNumber(input: String): String {
+        val digits = input.filter { it.isDigit() }.take(16)
+        return digits.chunked(4).joinToString(" ")
+    }
+
+    fun formatExpiry(input: String): String {
+        val digits = input.filter { it.isDigit() }.take(4)
+        return when {
+            digits.length <= 2 -> digits
+            else -> digits.substring(0, 2) + "/" + digits.substring(2)
+        }
+    }
+
+    fun validateCard(): Boolean {
+        val digits = cardNumber.filter { it.isDigit() }
+        val expDigits = expiry.filter { it.isDigit() }
+        val month = expDigits.take(2).toIntOrNull() ?: -1
+        val expOk = expDigits.length == 4 && month in 1..12
+        val cvvOk = cvv.filter { it.isDigit() }.length in 3..4
+
+        cardNumberError = digits.length != 16
+        cardHolderError = cardHolder.isBlank()
+        expiryError = !expOk
+        cvvError = !cvvOk
+
+        return !(cardNumberError || cardHolderError || expiryError || cvvError)
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState
@@ -569,6 +612,69 @@ private fun CheckoutSheet(
                     FilterChip(selected = method == PaymentMethod.COD,  onClick = { method = PaymentMethod.COD  }, label = { Text("💵 Efectivo") })
                 }
 
+                if (method == PaymentMethod.CARD) {
+                    Text("Datos de la tarjeta", style = MaterialTheme.typography.titleMedium)
+
+                    OutlinedTextField(
+                        value = cardNumber,
+                        onValueChange = {
+                            cardNumber = formatCardNumber(it)
+                            cardNumberError = false
+                        },
+                        label = { Text("Número de tarjeta") },
+                        placeholder = { Text("1234 5678 9012 3456") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        isError = cardNumberError,
+                        supportingText = if (cardNumberError) { { Text("Debe tener 16 dígitos", color = MaterialTheme.colorScheme.error) } } else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = cardHolder,
+                        onValueChange = { cardHolder = it; cardHolderError = false },
+                        label = { Text("Titular (como aparece en la tarjeta)") },
+                        placeholder = { Text("Nombre Apellido") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        isError = cardHolderError,
+                        supportingText = if (cardHolderError) { { Text("Campo requerido", color = MaterialTheme.colorScheme.error) } } else null
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = expiry,
+                            onValueChange = {
+                                expiry = formatExpiry(it)
+                                expiryError = false
+                            },
+                            label = { Text("Vencimiento (MM/YY)") },
+                            placeholder = { Text("MM/YY") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            isError = expiryError,
+                            supportingText = if (expiryError) { { Text("Formato inválido", color = MaterialTheme.colorScheme.error) } } else null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+
+                        OutlinedTextField(
+                            value = cvv,
+                            onValueChange = {
+                                cvv = it.filter { ch -> ch.isDigit() }.take(4)
+                                cvvError = false
+                            },
+                            label = { Text("CVV") },
+                            placeholder = { Text("***") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            isError = cvvError,
+                            supportingText = if (cvvError) { { Text("3 o 4 dígitos", color = MaterialTheme.colorScheme.error) } } else null,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it; showError = false },
@@ -581,7 +687,14 @@ private fun CheckoutSheet(
 
                 Button(
                     onClick = {
-                        if (address.isBlank()) showError = true else onConfirm(method, address)
+                        if (address.isBlank()) {
+                            showError = true
+                            return@Button
+                        }
+                        if (method == PaymentMethod.CARD && !validateCard()) {
+                            return@Button
+                        }
+                        onConfirm(method, address)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = count > 0
