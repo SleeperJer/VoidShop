@@ -1,17 +1,26 @@
+// app/src/main/java/com/example/voidshop/catalog/CatalogViewModel.kt
 package com.example.voidshop.catalog
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.voidshop.R
+import com.example.voidshop.data.local.AppDatabase
+import com.example.voidshop.data.repository.ProductRepository
 import com.example.voidshop.model.Category
 import com.example.voidshop.model.Product
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
-class CatalogViewModel : ViewModel() {
+class CatalogViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _products = MutableStateFlow<List<Product>>(
+    // Productos "seed" que ya tenías
+    private val builtIn = MutableStateFlow(
         listOf(
-            //la zonita gaming
             Product("1",  "Auriculares Xbox",          10.99, R.drawable.auriculares_xbox,          Category.GAMES,
                 keywords = listOf("audifonos", "headset", "gaming", "xbox")),
             Product("2",  "Mouse Razer DeathAdder",     15.49, R.drawable.mouse_razer_deathadder,    Category.GAMES,
@@ -22,7 +31,7 @@ class CatalogViewModel : ViewModel() {
             Product("4",  "Poloche Oversize Negro",     12.90, R.drawable.poloche_oversize_negro,    Category.ROPA,
                 keywords = listOf("ropa", "poloche", "camiseta", "oversize", "unisex", "negro")),
             Product("5",  "Poloche Sin Mangas Blanco",  11.50, R.drawable.poloche_con_mangas_blanco, Category.ROPA,
-                keywords = listOf("ropa", "poloche", "camiseta", "sin mangas", "blanco")),
+                keywords = listOf("ropa", "poloche", "camiseta", "sin", "mangas", "blanco")),
             Product("6",  "Poloche con Mangas Azul",    13.20, R.drawable.poloche_mangas_azul,       Category.ROPA,
                 keywords = listOf("ropa", "poloche", "camiseta", "mangas", "azul")),
 
@@ -42,5 +51,31 @@ class CatalogViewModel : ViewModel() {
                 keywords = listOf("joyeria", "cadena", "oro", "23k"))
         )
     )
-    val products: StateFlow<List<Product>> = _products
+
+    // Repo Room
+    private val repo: ProductRepository by lazy {
+        val dao = AppDatabase.get(getApplication()).productDao()
+        ProductRepository(dao)
+    }
+
+    // Flow de productos de usuario desde BD
+    private val userProducts = repo.observeUserProducts()
+
+    // Catálogo combinado (built-in + BD)
+    val products: StateFlow<List<Product>> =
+        combine(builtIn, userProducts) { base, user ->
+            user + base  // Los agregados por usuario primero
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // API para agregar producto del usuario
+    fun addUserProduct(
+        name: String,
+        price: Double,
+        category: Category,
+        keywords: List<String>
+    ) {
+        viewModelScope.launch {
+            repo.addUserProduct(name, price, category, keywords)
+        }
+    }
 }
